@@ -2182,6 +2182,22 @@ class MuseMinimaxDirector:
                 }
                 last_chunk_stage1_latent = bundle_latent
 
+            # Stubelius: embed this pass's own Stage-1 settings on the candidate
+            # latent so the bundled Refine node can auto-sync (seed/steps/split point
+            # must match Stage 1 exactly for the schedule continuation to be correct —
+            # carrying them on the latent removes the manual duplication entirely).
+            if last_chunk_stage1_latent is not None:
+                last_chunk_stage1_latent = dict(last_chunk_stage1_latent)
+                last_chunk_stage1_latent["_muse_stage1_settings"] = {
+                    "seed": int(pass_seed),
+                    "steps": int(steps),
+                    "first_pass_steps": int(two_stage_first_pass_steps),
+                    "sampler_name": sampler_name,
+                    "scheduler": scheduler,
+                    "upscale_factor": float(two_stage_upscale_factor),
+                    "ref_image_size": ref_image_size,
+                    "compiled_prompt": "\n\n".join(compiled_prompts),
+                }
             return final_images, final_audio, "\n\n".join(compiled_prompts), last_chunk_stage1_latent
 
         images, audio, compiled_prompt_text, stage1_latent = _run_pass(seed, candidate_idx=0)

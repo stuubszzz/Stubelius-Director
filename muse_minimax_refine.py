@@ -444,6 +444,11 @@ class MuseMinimaxRefine:
                 "two_stage_upscale_method": ([MUSE_GOLD_LEARNED, "nearest-exact", "bilinear", "area", "bicubic", "bislerp"], {"default": MUSE_GOLD_LEARNED, "tooltip":
                     "'%s' = trained 2x latent upscaler (Tr1dae/Mamad8 packs required; upscale factor above is ignored - always exactly 2x). "
                     "The interpolation options are the stock behavior." % MUSE_GOLD_LEARNED}),
+                "sync_from_director": ("BOOLEAN", {"default": True, "tooltip":
+                    "Stubelius: auto-pull seed / steps / first-pass steps / sampler / scheduler (and, if the "
+                    "prompt box is empty, the compiled prompt) from the chosen candidate itself - the Director "
+                    "embeds its Stage-1 settings on every candidate latent. Turn off to use this node's own "
+                    "widget values instead."}),
             },
             "optional": {
                 "candidate_1_latent": ("LATENT",),
@@ -467,6 +472,7 @@ class MuseMinimaxRefine:
     def execute(self, model, clip, vae, audio_vae, prompt, candidate,
                 ref_image_size, seed, steps, two_stage_first_pass_steps,
                 sampler_name, scheduler, two_stage_upscale_factor, two_stage_upscale_method,
+                sync_from_director=True,
                 candidate_1_latent=None, candidate_2_latent=None,
                 candidate_3_latent=None, candidate_4_latent=None,
                 ref_images=None):
@@ -486,6 +492,24 @@ class MuseMinimaxRefine:
             blocker = ExecutionBlocker(None)
             return (blocker, blocker)
         chosen_latent = candidates.get(candidate)
+        if sync_from_director and isinstance(chosen_latent, dict):
+            _synced = chosen_latent.get("_muse_stage1_settings")
+            if _synced:
+                seed = int(_synced.get("seed", seed))
+                steps = int(_synced.get("steps", steps))
+                two_stage_first_pass_steps = int(_synced.get("first_pass_steps", two_stage_first_pass_steps))
+                sampler_name = _synced.get("sampler_name", sampler_name)
+                scheduler = _synced.get("scheduler", scheduler)
+                ref_image_size = _synced.get("ref_image_size", ref_image_size)
+                if not (prompt or "").strip():
+                    prompt = _synced.get("compiled_prompt", prompt)
+                log.info("[MuseMinimaxRefineV1_2] Stubelius sync: pulled Stage-1 settings from candidate %d "
+                         "(seed=%d, steps=%d, first_pass=%d, %s/%s%s)",
+                         candidate, seed, steps, two_stage_first_pass_steps, sampler_name, scheduler,
+                         ", prompt from Director" if _synced.get("compiled_prompt") else "")
+            else:
+                log.info("[MuseMinimaxRefineV1_2] Stubelius sync: candidate carries no embedded settings "
+                         "(latent from an older Director run?) - using this node's own widget values.")
         if chosen_latent is None:
             log.warning("[MuseMinimaxRefineV1_2] Candidate slot %d has no latent connected — wire "
                         "candidate_%d_latent, or pick a filled slot. Blocking, not running.",
