@@ -21,6 +21,33 @@ function paintNode(node) {
   if (node.constructor) node.constructor.title_text_color = GOLD;
 }
 
+const TRACK_REST = "#241d08";
+function goldifySlider(el) {
+  if (el.style.getPropertyValue("--mmd-accent") !== GOLD) {
+    el.style.setProperty("--mmd-accent", GOLD);
+  }
+  const bg = el.style.background;
+  if (bg && bg.includes("linear-gradient") && !bg.includes(GOLD)) {
+    let i = 0;
+    const seq = [GOLD, GOLD, TRACK_REST, TRACK_REST];
+    el.style.background = bg.replace(/#[0-9a-fA-F]{3,8}|rgba?\([^)]*\)/g,
+      () => seq[Math.min(i++, seq.length - 1)]);
+  }
+}
+function goldifyAllSliders(root) {
+  (root || document).querySelectorAll?.(".mmd-slider").forEach(goldifySlider);
+}
+// live guard: their JS rewrites the gradient on every drag - rewrite it right back
+const sliderObserver = new MutationObserver((muts) => {
+  for (const m of muts) {
+    if (m.type === "attributes" && m.target.classList?.contains("mmd-slider")) {
+      goldifySlider(m.target);
+    } else if (m.type === "childList") {
+      for (const n of m.addedNodes) if (n.nodeType === 1) goldifyAllSliders(n);
+    }
+  }
+});
+
 function paintEverything() {
   const g = app.graph;
   if (!g) return;
@@ -148,6 +175,11 @@ app.registerExtension({
     style.id = "stubelius-gold-graph";
     style.textContent = CSS;
     document.head.appendChild(style);
+
+    sliderObserver.observe(document.body, {
+      subtree: true, childList: true, attributes: true, attributeFilter: ["style"],
+    });
+    goldifyAllSliders();
   },
 
   nodeCreated(node) {
@@ -176,6 +208,7 @@ app.registerExtension({
 
   afterConfigureGraph() {
     paintEverything();
+    goldifyAllSliders();
     const s = document.getElementById("stubelius-gold-graph");
     if (s) document.head.appendChild(s);   // move to end -> wins cascade ties
   },
