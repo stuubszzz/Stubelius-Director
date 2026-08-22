@@ -1029,7 +1029,7 @@ class MuseMinimaxDirector:
                     "video latent directly (no VAE round-trip), then finishes the remaining steps "
                     "at full resolution on the same continuous noise schedule. Off keeps today's "
                     "single-pass behavior exactly as-is."}),
-                "two_stage_first_pass_steps": ("INT", {"default": 2, "min": 1, "max": 6, "tooltip":
+                "two_stage_first_pass_steps": ("INT", {"default": 2, "min": 1, "max": 50, "tooltip":
                     "How many of the total steps run at the lower resolution before the upscale. "
                     "2 is the reference workflow's own saved default (2-3 is the tested range); "
                     "more than 3 risks the low-res pass locking in a broken composition before "

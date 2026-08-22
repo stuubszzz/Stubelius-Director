@@ -453,7 +453,7 @@ class MuseMinimaxRefine:
                 "steps": ("INT", {"default": 8, "min": 1, "max": 100, "tooltip":
                     "Must match the TOTAL steps the candidate's own Stage 1 was generated with — needed to "
                     "reconstruct the same sigma schedule so this picks up exactly where Stage 1 left off."}),
-                "two_stage_first_pass_steps": ("INT", {"default": 2, "min": 1, "max": 6, "tooltip":
+                "two_stage_first_pass_steps": ("INT", {"default": 2, "min": 1, "max": 50, "tooltip":
                     "Must match the First-Pass Steps the candidate's own Stage 1 used — this is where the "
                     "sigma schedule was actually split; getting it wrong means continuing from the wrong point."}),
                 "sampler_name": (["res_multistep", "euler", "euler_ancestral", "dpmpp_2m"], {"default": "euler"}),
