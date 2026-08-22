@@ -237,6 +237,7 @@ def _refine_one_chunk(
     ref_image_size, seed, steps, two_stage_first_pass_steps,
     sampler_name, scheduler, two_stage_upscale_factor, two_stage_upscale_method,
     ref_images_dict, carry_images, carry_audio, carry_length, log_label,
+    audio_lock=True,
 ):
     """Runs exactly the single-chunk Stage 2 pipeline this node has always run
     (upscale, priming pass, recombine, final DisableNoise pass, decode) — the
@@ -276,7 +277,7 @@ def _refine_one_chunk(
     # dict so this uses the correct source instead of re-deriving audio from
     # the denoised latent above, which was confirmed (real render, missing/
     # wrong dialogue) to be the wrong intermediate representation for it.
-    if isinstance(chunk_latent, dict) and "_muse_two_stage_raw_audio" in chunk_latent:
+    if (not audio_lock) and isinstance(chunk_latent, dict) and "_muse_two_stage_raw_audio" in chunk_latent:
         audio_carry = chunk_latent["_muse_two_stage_raw_audio"]
 
     video_samples = video_for_upscale["samples"]
@@ -340,6 +341,25 @@ def _refine_one_chunk(
     recombined = _unpack_node_result(_execute_comfy_node(
         LTXVConcatAVLatent, video_latent=video_primed, audio_latent=audio_carry,
     ))[0]
+
+    # Stubelius audio lock: the candidate preview plays the fully-denoised Stage-1
+    # audio, but the stock continuation re-denoises audio from its RAW mid-noise
+    # intermediate alongside the upscaled video - audibly regenerating it. Locked
+    # mode recombines the denoised audio (raw override skipped above) and freezes
+    # it with a zero noise-mask on the audio stream, so pass 2 touches video only
+    # and the output audio is exactly the take that was auditioned.
+    if audio_lock and carry_images is None:
+        import comfy.nested_tensor
+        recombined = dict(recombined)
+        recombined["noise_mask"] = comfy.nested_tensor.NestedTensor((
+            torch.ones_like(video_primed["samples"]),
+            torch.zeros_like(audio_carry["samples"]),
+        ))
+        log.info("[MuseMinimaxRefineV1_2] %s Stubelius audio lock: candidate audio frozen through pass 2.",
+                 log_label)
+    elif audio_lock:
+        log.warning("[MuseMinimaxRefineV1_2] %s Stubelius audio lock skipped: multi-chunk carry uses the "
+                    "stock audio continuation to keep chunk seams intact.", log_label)
 
     # Continuity re-anchor — only when this isn't the first chunk of a bundle
     # (carry_images is None for a plain single-chunk candidate, or the first
@@ -449,6 +469,12 @@ class MuseMinimaxRefine:
                     "prompt box is empty, the compiled prompt) from the chosen candidate itself - the Director "
                     "embeds its Stage-1 settings on every candidate latent. Turn off to use this node's own "
                     "widget values instead."}),
+                "audio_mode": (["keep candidate audio (locked)", "continue schedule (stock)"],
+                    {"default": "keep candidate audio (locked)", "tooltip":
+                    "Stubelius: 'keep' freezes the exact audio you auditioned on the candidate preview - "
+                    "pass 2 only re-samples video (audio noise-masked to zero). 'stock' is the original "
+                    "Muse behavior: audio continues the schedule from its raw mid-noise state alongside the "
+                    "upscaled video, which regenerates it and usually changes it audibly."}),
             },
             "optional": {
                 "candidate_1_latent": ("LATENT",),
@@ -472,7 +498,7 @@ class MuseMinimaxRefine:
     def execute(self, model, clip, vae, audio_vae, prompt, candidate,
                 ref_image_size, seed, steps, two_stage_first_pass_steps,
                 sampler_name, scheduler, two_stage_upscale_factor, two_stage_upscale_method,
-                sync_from_director=True,
+                sync_from_director=True, audio_mode="keep candidate audio (locked)",
                 candidate_1_latent=None, candidate_2_latent=None,
                 candidate_3_latent=None, candidate_4_latent=None,
                 ref_images=None):
@@ -571,6 +597,7 @@ class MuseMinimaxRefine:
                     sampler_name, scheduler, two_stage_upscale_factor, two_stage_upscale_method,
                     ref_images_dict, carry_images, carry_audio, carry_length,
                     log_label=f"candidate={candidate} chunk={chunk_idx + 1}/{chunk_count}",
+                    audio_lock=audio_mode.startswith("keep"),
                 )
                 all_images.append(chunk_images)
                 all_waveform.append(chunk_audio["waveform"])
@@ -597,6 +624,7 @@ class MuseMinimaxRefine:
             sampler_name, scheduler, two_stage_upscale_factor, two_stage_upscale_method,
             ref_images_dict, None, None, 0,
             log_label=f"candidate={candidate}",
+            audio_lock=audio_mode.startswith("keep"),
         )
         return (refined_images, refined_audio)
 
