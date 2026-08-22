@@ -94,22 +94,55 @@ app.registerExtension({
 [data-node-type] .node-title, [data-node-type] header { background: ${INK} !important; color: ${GOLD} !important; }
 [data-node-type] input[type="checkbox"], [data-node-type] input[type="range"] { accent-color: ${GOLD} !important; }
 /* Muse dashboards (node content) */
+[class*="mmd-"] {
+  --mmd-accent: ${GOLD} !important;
+}
 [class*="mmd-box"] {
   background: linear-gradient(180deg, ${INK_BODY} 0%, ${INK_DEEP} 100%) !important;
   border-color: ${GOLD_DIM} !important; border-top-color: ${GOLD} !important;
   box-shadow: 0 0 10px rgba(255,215,0,0.12), inset 0 0 12px rgba(255,215,0,0.04) !important;
 }
-[class*="mmd-"] label, [class*="mmd-"] .mmd-box-title { color: ${GOLD_TEXT} !important; }
+/* per-box accent stripes (blue/green/red/purple/teal/amber in stock) -> gold */
+.mmd-box-generation, .mmd-box-resolution, .mmd-box-sampling, .mmd-box-reference,
+.mmd-box-style, .mmd-box-soundscape, .mmd-box-timeline, .mmd-box-promptgen {
+  border-top-color: ${GOLD} !important; border-color: ${GOLD_DIM} !important;
+}
+.mmd-box-promptgen .mmd-box-title { color: ${GOLD} !important; }
+[class*="mmd-"] label, [class*="mmd-"] .mmd-box-title, .mmd-box-subtitle, .mmd-chunk-heading { color: ${GOLD_TEXT} !important; }
 [class*="mmd-box"] [class*="box-title"] { color: ${GOLD} !important; }
+/* every control */
 [class*="mmd-"] input[type="checkbox"], [class*="mmd-"] input[type="radio"],
-[class*="mmd-"] input[type="range"] { accent-color: ${GOLD} !important; }
+[class*="mmd-"] input[type="range"], .mmd-box-checkbox { accent-color: ${GOLD} !important; }
 [class*="mmd-"] input[type="text"], [class*="mmd-"] input[type="number"],
-[class*="mmd-"] select, [class*="mmd-"] textarea {
+[class*="mmd-"] select, [class*="mmd-"] textarea, .mmd-box-select, .mmd-box-number {
   background: ${INK_WIDGET} !important; color: ${GOLD_TEXT} !important; border: 1px solid ${GOLD_DIM} !important;
 }
 [class*="mmd-"] select option { background: ${INK_WIDGET}; color: ${GOLD_TEXT}; }
-[class*="mmd-"] button { background: #1a1408 !important; color: ${GOLD} !important; border: 1px solid ${GOLD_DIM} !important; }
+[class*="mmd-"] input:focus, [class*="mmd-"] select:focus, [class*="mmd-"] textarea:focus {
+  border-color: ${GOLD} !important; outline: none !important;
+}
+[class*="mmd-"] button, .mmd-analyze-btn, .mmd-av-trim-btn, .mmd-av-play-btn {
+  background: #1a1408 !important; color: ${GOLD} !important; border: 1px solid ${GOLD_DIM} !important;
+}
 [class*="mmd-"] button:hover { border-color: ${GOLD} !important; box-shadow: 0 0 8px ${GOLD_SOFT} !important; }
+/* add/delete bars (stock green/blue/red) */
+.mmd-add-cut, .mmd-add-cut-bar, .mmd-add-chunk-bar, .mmd-delete-chunk-bar {
+  border-color: ${GOLD_DIM} !important; color: ${GOLD} !important; background: ${INK_BODY} !important;
+}
+.mmd-add-cut:hover, .mmd-add-cut-bar:hover, .mmd-add-chunk-bar:hover, .mmd-delete-chunk-bar:hover {
+  border-color: ${GOLD} !important; color: ${GOLD} !important; background: #1a1408 !important;
+}
+/* reference image slots (stock purple/amber) + video/audio panels (blue/orange) */
+.mmd-char-slot, .mmd-char-slot.mmd-filled, .mmd-char-slot.mmd-bg-slot,
+.mmd-av-slot, .mmd-av-slot-video, .mmd-av-slot-audio {
+  border-color: ${GOLD_DIM} !important; background: ${INK_BODY} !important;
+}
+.mmd-char-slot:hover, .mmd-char-slot.mmd-bg-slot:hover, .mmd-av-slot:hover { border-color: ${GOLD} !important; }
+.mmd-av-slot-label, .mmd-av-slot-head, .mmd-char-label, .mmd-av-filename, .mmd-av-trim-readout { color: ${GOLD_TEXT} !important; }
+.mmd-mode-pill, .mmd-badge { background: rgba(255,215,0,0.13) !important; color: ${GOLD} !important; border-color: ${GOLD_DIM} !important; }
+/* catch-all: no foreign border colors anywhere inside the panels */
+[class*="mmd-"], [class*="mmd-"] * { border-color: ${GOLD_DIM} !important; }
+[class*="mmd-box"] { border-top-color: ${GOLD} !important; }
 `;
     const style = document.createElement("style");
     style.id = "stubelius-gold-graph";
@@ -119,6 +152,8 @@ app.registerExtension({
 
   nodeCreated(node) {
     paintNode(node);
+    const s = document.getElementById("stubelius-gold-graph");
+    if (s && document.head.lastElementChild !== s) document.head.appendChild(s);
     const cls = node.comfyClass || "";
     if (cls.startsWith("MuseMinimax") || cls === "MuseModelRoute") {
       const orig = node.onDrawForeground;
@@ -139,6 +174,10 @@ app.registerExtension({
     }
   },
 
-  afterConfigureGraph() { paintEverything(); },
+  afterConfigureGraph() {
+    paintEverything();
+    const s = document.getElementById("stubelius-gold-graph");
+    if (s) document.head.appendChild(s);   // move to end -> wins cascade ties
+  },
   loadedGraphNode(node) { paintNode(node); },
 });
