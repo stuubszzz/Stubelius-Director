@@ -1,0 +1,13 @@
+[project]
+name = "muse-gold-director"
+description = "Timeline-based director node for MiniMax H3 — visual CUT/segment editor, multi-character reference images, reference video + reference audio (with per-clip audio pairing for lipsync/voice reference), First/Last Frame mode, automatic chunking, two-stage sampling, a VAE re-encode continuity mode that hard-freezes a real re-encoded window of the previous chunk's output across the chunk boundary, and independent per-candidate Seed Hunt toggles that scout up to 4 seeds in one run. Bundled with its companion Muse Minimax Refine node — picks one Seed Hunt candidate and continues its sigma schedule at a higher resolution, including full multi-chunk Latent-Only Scouting candidates, not just a single chunk."
+version = "2.3.0"
+license = { file = "LICENSE" }
+
+[project.urls]
+Repository = "https://github.com/muse-collective-26/MiniMaxH3-Director-V1.2"
+
+[tool.comfy]
+PublisherId = "muse-collective"
+DisplayName = "Muse Minimax Director V1.2"
+Icon = ""
