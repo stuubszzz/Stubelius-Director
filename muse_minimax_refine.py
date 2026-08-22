@@ -238,6 +238,7 @@ def _refine_one_chunk(
     sampler_name, scheduler, two_stage_upscale_factor, two_stage_upscale_method,
     ref_images_dict, carry_images, carry_audio, carry_length, log_label,
     audio_lock=True,
+    refine_denoise=0.4,
 ):
     """Runs exactly the single-chunk Stage 2 pipeline this node has always run
     (upscale, priming pass, recombine, final DisableNoise pass, decode) — the
@@ -302,10 +303,20 @@ def _refine_one_chunk(
     full_sigmas = _unpack_node_result(_execute_comfy_node(
         BasicScheduler, model=model, scheduler=scheduler, steps=steps, denoise=1.0,
     ))[0]
-    split_step = max(1, min(int(two_stage_first_pass_steps), steps - 1))
-    _high_sigmas, low_sigmas = _unpack_node_result(_execute_comfy_node(
-        SplitSigmas, sigmas=full_sigmas, step=split_step,
-    ))[:2]
+    _is_complete = isinstance(chunk_latent, dict) and chunk_latent.get("_muse_complete_candidate", False)
+    if _is_complete:
+        # Complete candidate (Director ran full schedule, Two-Stage OFF): this is a
+        # POLISH pass, not a continuation. Re-run only the low-noise tail of the same
+        # schedule on the 2x-upscaled video - refine_denoise sets how much.
+        _k = max(1, min(int(round(steps * float(refine_denoise))), steps - 1))
+        low_sigmas = full_sigmas[-(_k + 1):]
+        log.info("[MuseMinimaxRefineV1_2] %s complete-candidate polish: re-running last %d/%d "
+                 "steps (denoise %.2f) on the upscaled video.", log_label, _k, steps, refine_denoise)
+    else:
+        split_step = max(1, min(int(two_stage_first_pass_steps), steps - 1))
+        _high_sigmas, low_sigmas = _unpack_node_result(_execute_comfy_node(
+            SplitSigmas, sigmas=full_sigmas, step=split_step,
+        ))[:2]
 
     if two_stage_upscale_method == MUSE_GOLD_LEARNED:
         upscaled_samples = _muse_gold_learned_upscale(video_samples)
@@ -475,6 +486,11 @@ class MuseMinimaxRefine:
                     "pass 2 only re-samples video (audio noise-masked to zero). 'stock' is the original "
                     "Muse behavior: audio continues the schedule from its raw mid-noise state alongside the "
                     "upscaled video, which regenerates it and usually changes it audibly."}),
+                "refine_denoise": ("FLOAT", {"default": 0.4, "min": 0.05, "max": 1.0, "step": 0.05, "tooltip":
+                    "Stubelius: used only for COMPLETE candidates (Director run with Two-Stage OFF). "
+                    "Fraction of the schedule re-run on the 2x-upscaled video as a polish pass: "
+                    "0.3-0.35 = very faithful to the take, 0.45-0.55 = cleaner but freer. "
+                    "Ignored for two-stage (mid-schedule) candidates, which continue their own split."}),
             },
             "optional": {
                 "candidate_1_latent": ("LATENT",),
@@ -498,7 +514,7 @@ class MuseMinimaxRefine:
     def execute(self, model, clip, vae, audio_vae, prompt, candidate,
                 ref_image_size, seed, steps, two_stage_first_pass_steps,
                 sampler_name, scheduler, two_stage_upscale_factor, two_stage_upscale_method,
-                sync_from_director=True, audio_mode="keep candidate audio (locked)",
+                sync_from_director=True, audio_mode="keep candidate audio (locked)", refine_denoise=0.4,
                 candidate_1_latent=None, candidate_2_latent=None,
                 candidate_3_latent=None, candidate_4_latent=None,
                 ref_images=None):
@@ -598,6 +614,7 @@ class MuseMinimaxRefine:
                     ref_images_dict, carry_images, carry_audio, carry_length,
                     log_label=f"candidate={candidate} chunk={chunk_idx + 1}/{chunk_count}",
                     audio_lock=audio_mode.startswith("keep"),
+                    refine_denoise=refine_denoise,
                 )
                 all_images.append(chunk_images)
                 all_waveform.append(chunk_audio["waveform"])
@@ -625,6 +642,7 @@ class MuseMinimaxRefine:
             ref_images_dict, None, None, 0,
             log_label=f"candidate={candidate}",
             audio_lock=audio_mode.startswith("keep"),
+            refine_denoise=refine_denoise,
         )
         return (refined_images, refined_audio)
 

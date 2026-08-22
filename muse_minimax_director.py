@@ -1845,12 +1845,16 @@ class MuseMinimaxDirector:
                 ))[0]
 
                 if not two_stage_sampling:
-                    chunk_stage1_latent = None
                     noise = _unpack_node_result(_execute_comfy_node(RandomNoise, noise_seed=pass_seed))[0]
                     sampled = _unpack_node_result(_execute_comfy_node(
                         SamplerCustomAdvanced, noise=noise, guider=guider, sampler=sampler,
                         sigmas=full_sigmas, latent_image=latent,
                     ))[0]
+                    # Stubelius: expose the COMPLETE candidate latent so the Refine node
+                    # can run a proper polish pass (learned 2x + partial re-noise) on a
+                    # fully-converged take instead of a mid-schedule estimate.
+                    chunk_stage1_latent = dict(sampled)
+                    chunk_stage1_latent["_muse_complete_candidate"] = True
                 else:
                     # Reference workflow's exact structure, ported from the TwoStage
                     # Combo node build (verified directly against its own node graph,
