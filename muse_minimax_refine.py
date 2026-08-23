@@ -266,7 +266,7 @@ def _refine_one_chunk(
     ref_images_dict, carry_images, carry_audio, carry_length, log_label,
     audio_lock=True,
     refine_denoise=0.4,
-    polish_steps=0,
+    polish_steps=16,
     two_stage_strategy="complete then polish (stubelius)",
 ):
     """Runs exactly the single-chunk Stage 2 pipeline this node has always run
@@ -571,12 +571,12 @@ class MuseMinimaxRefine:
                     "Fraction of the schedule re-run on the 2x-upscaled video as a polish pass: "
                     "0.3-0.35 = very faithful to the take, 0.45-0.55 = cleaner but freer. "
                     "Ignored for two-stage (mid-schedule) candidates, which continue their own split."}),
-                "polish_steps": ("INT", {"default": 0, "min": 0, "max": 100, "tooltip":
-                    "Stubelius, complete-candidate mode only. 0 = auto: the polish re-runs "
-                    "round(steps x refine_denoise) sigmas sliced from the candidate's own schedule. "
-                    ">0 = build a DEDICATED schedule with this many steps spanning the same "
-                    "refine_denoise noise range - more convergence at identical faithfulness. "
-                    "Try 12-20 for demanding motion."}),
+                "polish_steps": ("INT", {"default": 16, "min": 1, "max": 100, "tooltip":
+                    "Stubelius, complete-candidate mode only. Number of steps in the polish "
+                    "schedule spanning the refine_denoise noise range - more steps = better "
+                    "convergence at identical faithfulness. 12-20 recommended. "
+                    "(Minimum is 1: the frontend serializes a 0 value as an empty string, "
+                    "which used to hard-fail prompt validation.)"}),
                 "two_stage_strategy": (["complete then polish (stubelius)", "continue mid-schedule (stock)"],
                     {"default": "complete then polish (stubelius)", "tooltip":
                     "Stubelius, two-stage candidates only. 'complete then polish': first finish the "
@@ -618,7 +618,7 @@ class MuseMinimaxRefine:
     def execute(self, model, clip, vae, audio_vae, prompt, candidate,
                 ref_image_size, seed, steps, two_stage_first_pass_steps,
                 sampler_name, scheduler, two_stage_upscale_factor, two_stage_upscale_method,
-                sync_from_director=True, audio_mode="keep candidate audio (locked)", refine_denoise=0.4, polish_steps=0,
+                sync_from_director=True, audio_mode="keep candidate audio (locked)", refine_denoise=0.4, polish_steps=16,
                 two_stage_strategy="complete then polish (stubelius)",
                 candidate_1_latent=None, candidate_2_latent=None,
                 candidate_3_latent=None, candidate_4_latent=None,
@@ -627,7 +627,7 @@ class MuseMinimaxRefine:
         # slide stale/empty values into the newer widget slots (positional restore).
         # Coerce instead of crashing - the alternative is every pre-update save
         # erroring with "couldn't be converted to INT" until hand-fixed.
-        polish_steps = _coerce_int(polish_steps, 0)
+        polish_steps = _coerce_int(polish_steps, 16)
         refine_denoise = _coerce_float(refine_denoise, 0.4)
         seed = _coerce_int(seed, 42)
         steps = _coerce_int(steps, 20)
