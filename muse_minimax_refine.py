@@ -588,10 +588,10 @@ class MuseMinimaxRefine:
                     "is the stock V1.2 behavior. Multi-chunk bundles always use stock."}),
             },
             "optional": {
-                "candidate_1_latent": ("LATENT",),
-                "candidate_2_latent": ("LATENT",),
-                "candidate_3_latent": ("LATENT",),
-                "candidate_4_latent": ("LATENT",),
+                "candidate_1_latent": ("LATENT", {"lazy": True}),
+                "candidate_2_latent": ("LATENT", {"lazy": True}),
+                "candidate_3_latent": ("LATENT", {"lazy": True}),
+                "candidate_4_latent": ("LATENT", {"lazy": True}),
                 "ref_images": ("IMAGE", {"tooltip":
                     "The same character/product reference photos that anchored identity and fine detail "
                     "(exact prop shape, skin, likeness) in the original candidate — e.g. wired from "
@@ -600,6 +600,14 @@ class MuseMinimaxRefine:
                     "free to drift — this is what locks it back down."}),
             },
         }
+
+    def check_lazy_status(self, candidate=1, **kwargs):
+        c = _coerce_int(candidate, 0)
+        if 1 <= c <= 4:
+            name = f"candidate_{c}_latent"
+            if kwargs.get(name) is None:
+                return [name]
+        return []
 
     @classmethod
     def VALIDATE_INPUTS(cls, polish_steps=None, refine_denoise=None, seed=None, steps=None,
