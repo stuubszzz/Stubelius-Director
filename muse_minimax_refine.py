@@ -232,6 +232,33 @@ def _load_scout_chunk(path):
         return torch.load(path, map_location="cpu")
 
 
+def _coerce_int(v, default):
+    try:
+        return int(float(v))
+    except (TypeError, ValueError):
+        return int(default)
+
+
+def _coerce_float(v, default):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def _coerce_bool(v, default):
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, (int, float)):
+        return bool(v)
+    if isinstance(v, str):
+        s = v.strip().lower()
+        if s in ("", "none"):
+            return bool(default)
+        return s not in ("0", "false", "no", "off")
+    return bool(default)
+
+
 def _refine_one_chunk(
     model, clip, vae, audio_vae, chunk_prompt, chunk_latent,
     ref_image_size, seed, steps, two_stage_first_pass_steps,
@@ -573,6 +600,16 @@ class MuseMinimaxRefine:
             },
         }
 
+    @classmethod
+    def VALIDATE_INPUTS(cls, polish_steps=None, refine_denoise=None, seed=None, steps=None,
+                        two_stage_first_pass_steps=None, two_stage_upscale_factor=None,
+                        sync_from_director=None, audio_mode=None, two_stage_strategy=None):
+        # Accept anything for these - execute() coerces with safe defaults. This exists
+        # because saves from older pack versions positionally restore stale values
+        # (often empty strings) into newer widget slots, and core validation would
+        # otherwise hard-fail the whole prompt on int("").
+        return True
+
     RETURN_TYPES = ("IMAGE", "AUDIO")
     RETURN_NAMES = ("images", "audio")
     FUNCTION = "execute"
@@ -586,6 +623,22 @@ class MuseMinimaxRefine:
                 candidate_1_latent=None, candidate_2_latent=None,
                 candidate_3_latent=None, candidate_4_latent=None,
                 ref_images=None):
+        # Stubelius self-healing: workflows saved against an older widget schema can
+        # slide stale/empty values into the newer widget slots (positional restore).
+        # Coerce instead of crashing - the alternative is every pre-update save
+        # erroring with "couldn't be converted to INT" until hand-fixed.
+        polish_steps = _coerce_int(polish_steps, 0)
+        refine_denoise = _coerce_float(refine_denoise, 0.4)
+        seed = _coerce_int(seed, 42)
+        steps = _coerce_int(steps, 20)
+        two_stage_first_pass_steps = _coerce_int(two_stage_first_pass_steps, 4)
+        two_stage_upscale_factor = _coerce_float(two_stage_upscale_factor, 1.5)
+        sync_from_director = _coerce_bool(sync_from_director, True)
+        if not audio_mode or not str(audio_mode).strip():
+            audio_mode = "keep candidate audio (locked)"
+        if not two_stage_strategy or not str(two_stage_strategy).strip():
+            two_stage_strategy = "complete then polish (stubelius)"
+
         candidates = {
             1: candidate_1_latent, 2: candidate_2_latent,
             3: candidate_3_latent, 4: candidate_4_latent,
