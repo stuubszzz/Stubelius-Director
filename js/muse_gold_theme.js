@@ -38,13 +38,24 @@ function goldifyAllSliders(root) {
   (root || document).querySelectorAll?.(".mmd-slider").forEach(goldifySlider);
 }
 // live guard: their JS rewrites the gradient on every drag - rewrite it right back
+let goldifyQueued = false;
 const sliderObserver = new MutationObserver((muts) => {
+  let sliderTouched = false;
+  let nodesAdded = false;
   for (const m of muts) {
-    if (m.type === "attributes" && m.target.classList?.contains("mmd-slider")) {
-      goldifySlider(m.target);
-    } else if (m.type === "childList") {
-      for (const n of m.addedNodes) if (n.nodeType === 1) goldifyAllSliders(n);
+    if (m.type === "attributes") {
+      if (m.target.classList && m.target.classList.contains("mmd-slider")) {
+        goldifySlider(m.target);
+        sliderTouched = true;
+      }
+    } else if (m.type === "childList" && m.addedNodes.length) {
+      nodesAdded = true;
     }
+  }
+  // batch DOM sweeps for added subtrees to one per animation frame
+  if (nodesAdded && !goldifyQueued) {
+    goldifyQueued = true;
+    requestAnimationFrame(() => { goldifyQueued = false; goldifyAllSliders(); });
   }
 });
 
@@ -167,6 +178,26 @@ app.registerExtension({
 .mmd-char-slot:hover, .mmd-char-slot.mmd-bg-slot:hover, .mmd-av-slot:hover { border-color: ${GOLD} !important; }
 .mmd-av-slot-label, .mmd-av-slot-head, .mmd-char-label, .mmd-av-filename, .mmd-av-trim-readout { color: ${GOLD_TEXT} !important; }
 .mmd-mode-pill, .mmd-badge { background: rgba(255,215,0,0.13) !important; color: ${GOLD} !important; border-color: ${GOLD_DIM} !important; }
+/* ── interactive states: feedback must stay VISIBLE (in gold) ── */
+.mmd-speaker-chip, [class*="mmd-"] .mmd-speaker-chip {
+  background: #1a1408 !important; color: ${GOLD_TEXT} !important;
+  border: 1px solid ${GOLD_DIM} !important; cursor: pointer;
+}
+.mmd-speaker-chip.mmd-speaker-chip-active,
+[class*="mmd-"] .mmd-speaker-chip.mmd-speaker-chip-active {
+  background: ${GOLD} !important; color: #14100a !important;
+  border-color: ${GOLD} !important; box-shadow: 0 0 10px ${GOLD_SOFT} !important;
+  font-weight: 600 !important;
+}
+[class*="mmd-"].mmd-drag-over, [class*="mmd-"] .mmd-drag-over,
+[class*="mmd-"].stub-gold-drag, [class*="mmd-"] .stub-gold-drag {
+  border-color: ${GOLD} !important;
+  background: rgba(255, 215, 0, 0.14) !important;
+  box-shadow: inset 0 0 16px ${GOLD_SOFT}, 0 0 10px ${GOLD_SOFT} !important;
+}
+[class*="mmd-"] .mmd-active, .mmd-active {
+  border-color: ${GOLD} !important; color: ${GOLD} !important;
+}
 /* catch-all: no foreign border colors anywhere inside the panels */
 [class*="mmd-"], [class*="mmd-"] * { border-color: ${GOLD_DIM} !important; }
 [class*="mmd-box"] { border-top-color: ${GOLD} !important; }
@@ -175,6 +206,22 @@ app.registerExtension({
     style.id = "stubelius-gold-graph";
     style.textContent = CSS;
     document.head.appendChild(style);
+
+    // drag-hover feedback for ref/media slots: stock code sets an inline
+    // borderColor which our !important border rules override - re-provide the
+    // highlight as a class the state CSS styles in gold.
+    const DRAG_SEL = '[class*="mmd-char-slot"], [class*="mmd-av-slot"]';
+    let dragHot = null;
+    const clearDrag = () => { if (dragHot) { dragHot.classList.remove("stub-gold-drag"); dragHot = null; } };
+    document.addEventListener("dragover", (e) => {
+      const s = e.target && e.target.closest ? e.target.closest(DRAG_SEL) : null;
+      if (s !== dragHot) { clearDrag(); if (s) { s.classList.add("stub-gold-drag"); dragHot = s; } }
+    }, true);
+    document.addEventListener("drop", clearDrag, true);
+    document.addEventListener("dragend", clearDrag, true);
+    document.addEventListener("dragleave", (e) => {
+      if (!e.relatedTarget || e.relatedTarget === document.documentElement) clearDrag();
+    }, true);
 
     sliderObserver.observe(document.body, {
       subtree: true, childList: true, attributes: true, attributeFilter: ["style"],
@@ -193,13 +240,13 @@ app.registerExtension({
         if (!this.flags?.collapsed) {
           ctx.save();
           const t = window.LiteGraph.NODE_TITLE_HEIGHT;
-          const pulse = 0.55 + 0.45 * Math.sin(performance.now() / 700);
-          ctx.shadowColor = GOLD; ctx.shadowBlur = 7 + 9 * pulse;
+          ctx.shadowColor = GOLD; ctx.shadowBlur = 12;
           ctx.strokeStyle = GOLD; ctx.lineWidth = 1.5;
           ctx.beginPath();
           ctx.roundRect(-0.5, -t - 0.5, this.size[0] + 1, this.size[1] + t + 1, 8);
           ctx.stroke(); ctx.restore();
-          this.setDirtyCanvas(true, false);
+          // NOTE: no setDirtyCanvas here - a per-frame dirty flag forces the whole
+          // canvas to redraw continuously and measurably loads the GPU during renders.
         }
         orig?.apply(this, arguments);
       };
