@@ -93,7 +93,14 @@ app.registerExtension({
 
       const candidateWidget = (this.widgets || []).find((w) => w.name === "candidate");
       if (candidateWidget) {
-        hideWidget(candidateWidget);
+        // Stubelius: only hide the native INT widget on the CLASSIC renderer, where
+        // JS-set values serialize correctly. On the Vue frontend (Nodes 2.0),
+        // programmatic widget.value writes can fail to reach the serialized prompt,
+        // so the native widget stays visible as the guaranteed-working input path -
+        // the buttons remain as a convenience on both.
+        if (!(window.LiteGraph && window.LiteGraph.vueNodesMode)) {
+          hideWidget(candidateWidget);
+        }
         const { container, refresh } = buildCandidateSelector(this, candidateWidget);
         this._museRefineRefresh = refresh;
         this.addDOMWidget("mmr_candidate_ui", "mmr_candidate_ui", container, {
