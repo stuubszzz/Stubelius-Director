@@ -240,6 +240,7 @@ def _refine_one_chunk(
     audio_lock=True,
     refine_denoise=0.4,
     polish_steps=0,
+    two_stage_strategy="complete then polish (stubelius)",
 ):
     """Runs exactly the single-chunk Stage 2 pipeline this node has always run
     (upscale, priming pass, recombine, final DisableNoise pass, decode) — the
@@ -327,6 +328,48 @@ def _refine_one_chunk(
         _high_sigmas, low_sigmas = _unpack_node_result(_execute_comfy_node(
             SplitSigmas, sigmas=full_sigmas, step=split_step,
         ))[:2]
+
+    if (not _is_complete) and str(two_stage_strategy).startswith("complete") and carry_images is None:
+        # ── Stubelius "complete then polish", Phase 1: finish the take at 1x ──
+        # The stock two-stage upscales a HALF-BAKED mid-schedule latent: dirty video
+        # into a clean-latent upscaler, half-denoised audio re-rolled against changed
+        # video (the measured cause of the audio/motion regressions). Instead:
+        # complete the candidate's own trajectory at scout resolution first (cheap,
+        # exact continuation of what the preview estimated - audio finishes at full
+        # quality), then hand the CLEAN result to the complete-candidate polish path.
+        _c_audio = audio_carry
+        if isinstance(chunk_latent, dict) and "_muse_two_stage_raw_audio" in chunk_latent:
+            _c_audio = chunk_latent["_muse_two_stage_raw_audio"]  # true trajectory audio
+        _c_noise = _unpack_node_result(_execute_comfy_node(RandomNoise, noise_seed=seed))[0]
+        _c_tiny = _unpack_node_result(_execute_comfy_node(SplitSigmas, sigmas=low_sigmas, step=0))[0]
+        _c_primed = _unpack_node_result(_execute_comfy_node(
+            SamplerCustomAdvanced, noise=_c_noise, guider=guider, sampler=sampler,
+            sigmas=_c_tiny, latent_image=video_for_upscale,
+        ))[0]
+        _c_recombined = _unpack_node_result(_execute_comfy_node(
+            LTXVConcatAVLatent, video_latent=_c_primed, audio_latent=_c_audio,
+        ))[0]
+        _c_disable = _unpack_node_result(_execute_comfy_node(DisableNoise))[0]
+        _c_completed = _unpack_node_result(_execute_comfy_node(
+            SamplerCustomAdvanced, noise=_c_disable, guider=guider, sampler=sampler,
+            sigmas=low_sigmas, latent_image=_c_recombined,
+        ))[0]
+        log.info("[MuseMinimaxRefineV1_2] %s complete-then-polish: finished remaining %d steps at 1x; "
+                 "handing the completed take to the polish stage.",
+                 log_label, max(int(low_sigmas.shape[0]) - 1, 0))
+        _c_completed = dict(_c_completed)
+        _c_completed["_muse_complete_candidate"] = True
+        return _refine_one_chunk(
+            model, clip, vae, audio_vae, chunk_prompt, _c_completed,
+            ref_image_size, seed, steps, two_stage_first_pass_steps,
+            sampler_name, scheduler, two_stage_upscale_factor, two_stage_upscale_method,
+            ref_images_dict, None, None, 0,
+            log_label=log_label + " [polish]",
+            audio_lock=audio_lock,
+            refine_denoise=refine_denoise,
+            polish_steps=polish_steps,
+            two_stage_strategy=two_stage_strategy,
+        )
 
     if two_stage_upscale_method == MUSE_GOLD_LEARNED:
         upscaled_samples = _muse_gold_learned_upscale(video_samples)
@@ -507,6 +550,14 @@ class MuseMinimaxRefine:
                     ">0 = build a DEDICATED schedule with this many steps spanning the same "
                     "refine_denoise noise range - more convergence at identical faithfulness. "
                     "Try 12-20 for demanding motion."}),
+                "two_stage_strategy": (["complete then polish (stubelius)", "continue mid-schedule (stock)"],
+                    {"default": "complete then polish (stubelius)", "tooltip":
+                    "Stubelius, two-stage candidates only. 'complete then polish': first finish the "
+                    "candidate's own remaining schedule at scout resolution (exact trajectory of the "
+                    "audition, audio completes to full quality), THEN learned-2x the clean result and "
+                    "run the refine_denoise/polish_steps tail with the audio lock. Fixes the original "
+                    "two-stage's core flaw of upscaling a half-baked latent. 'continue mid-schedule' "
+                    "is the stock V1.2 behavior. Multi-chunk bundles always use stock."}),
             },
             "optional": {
                 "candidate_1_latent": ("LATENT",),
@@ -531,6 +582,7 @@ class MuseMinimaxRefine:
                 ref_image_size, seed, steps, two_stage_first_pass_steps,
                 sampler_name, scheduler, two_stage_upscale_factor, two_stage_upscale_method,
                 sync_from_director=True, audio_mode="keep candidate audio (locked)", refine_denoise=0.4, polish_steps=0,
+                two_stage_strategy="complete then polish (stubelius)",
                 candidate_1_latent=None, candidate_2_latent=None,
                 candidate_3_latent=None, candidate_4_latent=None,
                 ref_images=None):
@@ -631,6 +683,7 @@ class MuseMinimaxRefine:
                     log_label=f"candidate={candidate} chunk={chunk_idx + 1}/{chunk_count}",
                     audio_lock=audio_mode.startswith("keep"),
                     refine_denoise=refine_denoise, polish_steps=polish_steps,
+                    two_stage_strategy=two_stage_strategy,
                 )
                 all_images.append(chunk_images)
                 all_waveform.append(chunk_audio["waveform"])
@@ -659,6 +712,7 @@ class MuseMinimaxRefine:
             log_label=f"candidate={candidate}",
             audio_lock=audio_mode.startswith("keep"),
             refine_denoise=refine_denoise, polish_steps=polish_steps,
+            two_stage_strategy=two_stage_strategy,
         )
         return (refined_images, refined_audio)
 
