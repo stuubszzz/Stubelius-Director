@@ -239,6 +239,7 @@ def _refine_one_chunk(
     ref_images_dict, carry_images, carry_audio, carry_length, log_label,
     audio_lock=True,
     refine_denoise=0.4,
+    polish_steps=0,
 ):
     """Runs exactly the single-chunk Stage 2 pipeline this node has always run
     (upscale, priming pass, recombine, final DisableNoise pass, decode) — the
@@ -308,10 +309,19 @@ def _refine_one_chunk(
         # Complete candidate (Director ran full schedule, Two-Stage OFF): this is a
         # POLISH pass, not a continuation. Re-run only the low-noise tail of the same
         # schedule on the 2x-upscaled video - refine_denoise sets how much.
-        _k = max(1, min(int(round(steps * float(refine_denoise))), steps - 1))
-        low_sigmas = full_sigmas[-(_k + 1):]
-        log.info("[MuseMinimaxRefineV1_2] %s complete-candidate polish: re-running last %d/%d "
-                 "steps (denoise %.2f) on the upscaled video.", log_label, _k, steps, refine_denoise)
+        if int(polish_steps) > 0:
+            low_sigmas = _unpack_node_result(_execute_comfy_node(
+                BasicScheduler, model=model, scheduler=scheduler,
+                steps=int(polish_steps), denoise=float(refine_denoise),
+            ))[0]
+            log.info("[MuseMinimaxRefineV1_2] %s complete-candidate polish: dedicated %d-step "
+                     "schedule over denoise %.2f on the upscaled video.",
+                     log_label, int(polish_steps), refine_denoise)
+        else:
+            _k = max(1, min(int(round(steps * float(refine_denoise))), steps - 1))
+            low_sigmas = full_sigmas[-(_k + 1):]
+            log.info("[MuseMinimaxRefineV1_2] %s complete-candidate polish: re-running last %d/%d "
+                     "steps (denoise %.2f) on the upscaled video.", log_label, _k, steps, refine_denoise)
     else:
         split_step = max(1, min(int(two_stage_first_pass_steps), steps - 1))
         _high_sigmas, low_sigmas = _unpack_node_result(_execute_comfy_node(
@@ -491,6 +501,12 @@ class MuseMinimaxRefine:
                     "Fraction of the schedule re-run on the 2x-upscaled video as a polish pass: "
                     "0.3-0.35 = very faithful to the take, 0.45-0.55 = cleaner but freer. "
                     "Ignored for two-stage (mid-schedule) candidates, which continue their own split."}),
+                "polish_steps": ("INT", {"default": 0, "min": 0, "max": 100, "tooltip":
+                    "Stubelius, complete-candidate mode only. 0 = auto: the polish re-runs "
+                    "round(steps x refine_denoise) sigmas sliced from the candidate's own schedule. "
+                    ">0 = build a DEDICATED schedule with this many steps spanning the same "
+                    "refine_denoise noise range - more convergence at identical faithfulness. "
+                    "Try 12-20 for demanding motion."}),
             },
             "optional": {
                 "candidate_1_latent": ("LATENT",),
@@ -514,7 +530,7 @@ class MuseMinimaxRefine:
     def execute(self, model, clip, vae, audio_vae, prompt, candidate,
                 ref_image_size, seed, steps, two_stage_first_pass_steps,
                 sampler_name, scheduler, two_stage_upscale_factor, two_stage_upscale_method,
-                sync_from_director=True, audio_mode="keep candidate audio (locked)", refine_denoise=0.4,
+                sync_from_director=True, audio_mode="keep candidate audio (locked)", refine_denoise=0.4, polish_steps=0,
                 candidate_1_latent=None, candidate_2_latent=None,
                 candidate_3_latent=None, candidate_4_latent=None,
                 ref_images=None):
@@ -614,7 +630,7 @@ class MuseMinimaxRefine:
                     ref_images_dict, carry_images, carry_audio, carry_length,
                     log_label=f"candidate={candidate} chunk={chunk_idx + 1}/{chunk_count}",
                     audio_lock=audio_mode.startswith("keep"),
-                    refine_denoise=refine_denoise,
+                    refine_denoise=refine_denoise, polish_steps=polish_steps,
                 )
                 all_images.append(chunk_images)
                 all_waveform.append(chunk_audio["waveform"])
@@ -642,7 +658,7 @@ class MuseMinimaxRefine:
             ref_images_dict, None, None, 0,
             log_label=f"candidate={candidate}",
             audio_lock=audio_mode.startswith("keep"),
-            refine_denoise=refine_denoise,
+            refine_denoise=refine_denoise, polish_steps=polish_steps,
         )
         return (refined_images, refined_audio)
 
