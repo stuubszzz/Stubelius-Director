@@ -55,8 +55,22 @@ function buildCandidateSelector(node, widget) {
       // Clicking the already-active candidate deselects it (back to 0/none) instead
       // of being a one-way switch — otherwise there was no way to reset the node to
       // its "not ready" state short of typing 0 into the hidden underlying widget.
-      widget.value = Number(widget.value) === i ? 0 : i;
-      if (widget.callback) widget.callback(widget.value);
+      const v = Number(widget.value) === i ? 0 : i;
+      // Stubelius fix: on the Vue-based frontend, setting widget.value on the
+      // LiteGraph object does NOT reach the serialized prompt (the frontend keeps
+      // its own widget-value store and prefers it). Write through every store a
+      // frontend variant might read, then fire the callback.
+      widget.value = v;
+      const idx = (node.widgets || []).indexOf(widget);
+      if (Array.isArray(node.widgets_values) && idx >= 0) node.widgets_values[idx] = v;
+      if (node.widgets_values_named && typeof node.widgets_values_named === "object") {
+        node.widgets_values_named[widget.name] = v;
+      }
+      if (typeof node.setWidgetValue === "function") {
+        try { node.setWidgetValue(widget.name, v); } catch (e) { /* older frontend */ }
+      }
+      if (widget.callback) widget.callback(v, app.canvas, node);
+      app.graph?.change?.();
       node.setDirtyCanvas(true, true);
       refresh();
     });
