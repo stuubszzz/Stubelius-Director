@@ -367,7 +367,8 @@ def _refine_one_chunk(
         _c_audio = audio_carry
         if isinstance(chunk_latent, dict) and "_muse_two_stage_raw_audio" in chunk_latent:
             _c_audio = chunk_latent["_muse_two_stage_raw_audio"]  # true trajectory audio
-        _c_noise = _unpack_node_result(_execute_comfy_node(RandomNoise, noise_seed=seed))[0]
+        from nodes import NODE_CLASS_MAPPINGS as _stub_ncm
+        _c_noise = _unpack_node_result(_execute_comfy_node(_stub_ncm["RandomNoise"], noise_seed=seed))[0]
         _c_tiny = _unpack_node_result(_execute_comfy_node(SplitSigmas, sigmas=low_sigmas, step=0))[0]
         _c_primed = _unpack_node_result(_execute_comfy_node(
             SamplerCustomAdvanced, noise=_c_noise, guider=guider, sampler=sampler,
