@@ -603,6 +603,9 @@ class MuseMinimaxRefine:
 
     def check_lazy_status(self, candidate=1, **kwargs):
         c = _coerce_int(candidate, 0)
+        import logging as _lg
+        _lg.getLogger(__name__).warning("[MuseMinimaxRefineV1_2] check_lazy_status CALLED: candidate=%s, "
+            "wired=%s", c, [k for k,v in kwargs.items() if k.startswith("candidate_") and v is not None])
         if 1 <= c <= 4:
             name = f"candidate_{c}_latent"
             if kwargs.get(name) is None:
