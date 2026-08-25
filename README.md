@@ -7,7 +7,7 @@
 
 Install **instead of** the original pack (and remove any standalone `muse-minimax-refine` install) — node class names are unchanged, so existing workflows and timelines keep working.
 
----
+---https://youtu.be/JAdoKVSE2LY
 
 # Muse Minimax Director V1.2
 
