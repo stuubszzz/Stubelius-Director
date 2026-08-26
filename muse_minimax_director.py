@@ -2270,8 +2270,18 @@ class MuseMinimaxDirector:
         # latent is None here. Same silent-block convention as main_images/main_audio
         # above rather than a fake empty LATENT, since a scouting latent that was never
         # actually generated has nothing sensible to hand downstream either way.
+        # SENTINEL, not ExecutionBlocker: a blocker on ANY wired input prunes the
+        # consumer before execute() is even called (confirmed against the 0.33/0.34
+        # executor), and lazy inputs can't retract a value produced in the same pass.
+        # With all four candidate wires connected on the Refine, hunting fewer than 4
+        # candidates would silently prune the whole Refine ("Prompt executed in 0.01
+        # seconds"). A tiny inert latent with a marker flows harmlessly instead; the
+        # Refine blocks cleanly only if the PICKED slot carries the marker.
+        def _sentinel_latent():
+            import torch as _t
+            return {"samples": _t.zeros(1, 1, 1, 1, 1), "_stub_not_hunted": True}
         candidate_latents_out = [
-            lat if lat is not None else ExecutionBlocker(None) for lat in candidate_latents
+            lat if lat is not None else _sentinel_latent() for lat in candidate_latents
         ]
 
         return (

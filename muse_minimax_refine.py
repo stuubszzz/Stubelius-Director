@@ -685,6 +685,11 @@ class MuseMinimaxRefine:
             else:
                 log.info("[MuseMinimaxRefineV1_2] Stubelius sync: candidate carries no embedded settings "
                          "(latent from an older Director run?) - using this node's own widget values.")
+        if isinstance(chosen_latent, dict) and chosen_latent.get("_stub_not_hunted"):
+            log.warning("[MuseMinimaxRefineV1_2] Candidate %d was not hunted this run (its Director "
+                        "checkbox is off) — pick a hunted slot, or enable it and re-run the hunt. "
+                        "Blocking, not running.", candidate)
+            chosen_latent = None
         if chosen_latent is None:
             log.warning("[MuseMinimaxRefineV1_2] Candidate slot %d has no latent connected — wire "
                         "candidate_%d_latent, or pick a filled slot. Blocking, not running.",
