@@ -207,7 +207,7 @@ def _encode_av_latent(vae, audio_vae, frames, audio):
     mirrors MiniMaxH3ReferenceToVideo._encode_ref_audio's own resample-then-encode
     exactly, since that's the only place in H3's own source that encodes real
     (non-empty) audio."""
-    import comfy.nested_tensor
+    from comfy import nested_tensor as _comfy_nested
     import torchaudio
 
     n = _trim_to_grid(frames.shape[0])
@@ -220,7 +220,7 @@ def _encode_av_latent(vae, audio_vae, frames, audio):
         waveform = torchaudio.functional.resample(waveform, sr, vae_sr)
     audio_latent = audio_vae.encode(waveform[:1].movedim(1, -1))
 
-    return {"samples": comfy.nested_tensor.NestedTensor((video_latent, audio_latent))}, n
+    return {"samples": _comfy_nested.NestedTensor((video_latent, audio_latent))}, n
 
 
 def _load_scout_chunk(path):
@@ -441,9 +441,9 @@ def _refine_one_chunk(
     # it with a zero noise-mask on the audio stream, so pass 2 touches video only
     # and the output audio is exactly the take that was auditioned.
     if audio_lock and carry_images is None:
-        import comfy.nested_tensor
+        from comfy import nested_tensor as _comfy_nested
         recombined = dict(recombined)
-        recombined["noise_mask"] = comfy.nested_tensor.NestedTensor((
+        recombined["noise_mask"] = _comfy_nested.NestedTensor((
             torch.ones_like(video_primed["samples"]),
             torch.zeros_like(audio_carry["samples"]),
         ))
