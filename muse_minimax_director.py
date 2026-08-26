@@ -1161,8 +1161,14 @@ class MuseMinimaxDirector:
         # specifically (see the `elif background and (...)` branch below) since Refine only
         # ever operates on a single H3-call-length candidate, never a later continuation chunk.
         ref_images_used_list = []
+        # Emit the loaded slot images in EVERY mode, not just Reference. In First/Last
+        # Frame mode, slots 1/2 double as the first/last frames themselves - typically
+        # the character - and any further filled slots are dedicated character photos.
+        # Passing them through lets MuseMinimaxRefine anchor identity during its polish
+        # pass in FL mode too (without this, FL-mode refines ran text-only and likeness
+        # drifted freely). Purely a passthrough: FL conditioning itself is unchanged.
+        ref_images_used_list.extend(char_ref_images.values())
         if mode == MODE_REFERENCE:
-            ref_images_used_list.extend(char_ref_images.values())
             if background and (background.get("file") or background.get("image_b64")):
                 bg_tensor = _load_character_image(background)
                 if bg_tensor is not None:
