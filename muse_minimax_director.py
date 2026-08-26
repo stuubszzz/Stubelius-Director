@@ -1110,6 +1110,17 @@ class MuseMinimaxDirector:
                 two_stage_upscale_method, two_stage_seed_hunt_latent_only, shift_video, shift_audio,
                 timeline_data, candidate_2=False, candidate_3=False, candidate_4=False,
                 model_fl2va=None, prompt_override=None):
+        # Model-route tolerance: workflows that switch a single prepared model chain
+        # between the main input (Ref mode) and model_fl2va (First/Last mode) deliver
+        # None on the unused slot. The Director always needs a main model (sigma shift,
+        # text encode paths run on it), so if only model_fl2va arrived, promote it.
+        if model is None and model_fl2va is not None:
+            log.info("[MuseMinimaxDirector] main model input is None - using the model_fl2va "
+                     "input as the main model (model-switch workflow).")
+            model = model_fl2va
+        if model is None:
+            raise RuntimeError("[MuseMinimaxDirector] No model connected: both 'model' and "
+                               "'model_fl2va' are None. Check the model switch/route wiring.")
         tdata = _parse_timeline(timeline_data)
         # Resolved before any reference image is loaded — every character/background/
         # First-Last-Frame image gets fit to this exact resolution via resize_method,
