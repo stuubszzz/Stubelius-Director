@@ -1,7 +1,8 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// STUBELIUS GOLD — black & neon-gold theme for the GRAPH ONLY.
-// Every node, wire, group, node-widget and the canvas: gold on black.
-// App chrome (menus, sidebars, workflow tabs, dialogs) is left untouched.
+// STUBELIUS GOLD — black & neon-gold theme for the MUSE/STUBELIUS NODES ONLY.
+// Scoped: only this pack's nodes (MuseMinimax*, MuseModelRoute, Stubelius*) get the
+// gold-on-black paint, outline and widget styling. The rest of the graph, the canvas,
+// links, groups and app chrome are left exactly as the user's own theme has them.
 // ═══════════════════════════════════════════════════════════════════════════
 import { app } from "../../scripts/app.js";
 
@@ -15,9 +16,15 @@ const INK_BODY   = "#14100a";   // node bodies
 const INK_DEEP   = "#080704";   // canvas
 const INK_WIDGET = "#0a0804";
 
+function isMuse(node) {
+  const cls = (node && node.comfyClass) || "";
+  return cls.startsWith("MuseMinimax") || cls === "MuseModelRoute" || cls.startsWith("Stubelius");
+}
 function paintNode(node) {
+  if (!isMuse(node)) return;
   node.color = INK;
   node.bgcolor = INK_BODY;
+  // per-CLASS title color is safe here: the constructor is one of ours
   if (node.constructor) node.constructor.title_text_color = GOLD;
 }
 
@@ -62,11 +69,7 @@ const sliderObserver = new MutationObserver((muts) => {
 function paintEverything() {
   const g = app.graph;
   if (!g) return;
-  for (const n of g._nodes || []) paintNode(n);
-  for (const gr of g._groups || g.groups || []) {
-    gr.color = GOLD_FAINT;
-    if (gr.font_color !== undefined) gr.font_color = GOLD;
-  }
+  for (const n of g._nodes || []) paintNode(n);   // no-op for non-Muse nodes
   app.canvas?.setDirty(true, true);
 }
 
@@ -74,63 +77,24 @@ app.registerExtension({
   name: "stubelius.gold.graph",
 
   setup() {
-    const LG = window.LiteGraph;
-    const LGC = window.LGraphCanvas;
-
-    // ── LiteGraph palette: nodes, widgets, links (canvas renderer only) ──
-    if (LG) {
-      LG.NODE_DEFAULT_COLOR    = INK;
-      LG.NODE_DEFAULT_BGCOLOR  = INK_BODY;
-      LG.NODE_DEFAULT_BOXCOLOR = GOLD_DIM;
-      LG.NODE_TITLE_COLOR      = GOLD;
-      LG.NODE_SELECTED_TITLE_COLOR = GOLD;
-      LG.NODE_TEXT_COLOR       = GOLD_TEXT;
-      LG.NODE_BOX_OUTLINE_COLOR = GOLD;
-      LG.WIDGET_BGCOLOR        = INK_WIDGET;
-      LG.WIDGET_OUTLINE_COLOR  = GOLD_DIM;
-      LG.WIDGET_TEXT_COLOR     = GOLD;
-      LG.WIDGET_SECONDARY_TEXT_COLOR = GOLD_TEXT;
-      LG.LINK_COLOR            = GOLD;
-      LG.EVENT_LINK_COLOR      = GOLD;
-      LG.CONNECTING_LINK_COLOR = GOLD;
-      LG.DEFAULT_GROUP_FONT_COLOR = GOLD;
-      if (LGC?.node_colors) {
-        for (const k of Object.keys(LGC.node_colors)) {
-          LGC.node_colors[k] = { color: INK, bgcolor: INK_BODY, groupcolor: GOLD_FAINT };
-        }
-      }
-    }
-    if (LGC) {
-      LGC.link_type_colors = new Proxy({}, { get: () => GOLD, has: () => true });
-      LGC.DEFAULT_CONNECTION_COLORS = {
-        input_off: GOLD_DIM, input_on: GOLD, output_off: GOLD_DIM, output_on: GOLD,
-      };
-    }
-    if (app.canvas) {
-      app.canvas.default_connection_color = {
-        input_off: GOLD_DIM, input_on: GOLD, output_off: GOLD_DIM, output_on: GOLD,
-      };
-      app.canvas.default_connection_color_byType = new Proxy({}, { get: () => GOLD, has: () => true });
-      app.canvas.default_connection_color_byTypeOff = new Proxy({}, { get: () => GOLD_DIM, has: () => true });
-      app.canvas.clear_background_color = INK_DEEP;
-      app.canvas.render_canvas_border = false;
-    }
+    // (global LiteGraph palette, link colors and canvas background intentionally
+    // NOT touched - this theme is scoped to the pack's own nodes and dashboards.)
 
     // ── DOM: graph-content elements ONLY (no menus/sidebars/dialogs) ──
     const CSS = `
-/* canvas background */
-#graph-canvas { background: ${INK_DEEP} !important; }
-/* in-node multiline text widgets (DOM overlays that belong to nodes) */
-.comfy-multiline-input, .dom-widget textarea, .dom-widget input, .dom-widget select {
-  background: ${INK_WIDGET} !important; color: ${GOLD_TEXT} !important;
-  border: 1px solid ${GOLD_DIM} !important;
-}
-/* Nodes 2.0 DOM-rendered nodes */
-.lg-node, [data-node-type] {
+/* Nodes 2.0 DOM-rendered nodes - THIS PACK'S classes only */
+[data-node-type^="MuseMinimax"], [data-node-type="MuseModelRoute"], [data-node-type^="Stubelius"] {
   background: ${INK_BODY} !important; border-color: ${GOLD_DIM} !important; color: ${GOLD_TEXT} !important;
 }
-[data-node-type] .node-title, [data-node-type] header { background: ${INK} !important; color: ${GOLD} !important; }
-[data-node-type] input[type="checkbox"], [data-node-type] input[type="range"] { accent-color: ${GOLD} !important; }
+[data-node-type^="MuseMinimax"] .node-title, [data-node-type^="MuseMinimax"] header,
+[data-node-type="MuseModelRoute"] .node-title, [data-node-type="MuseModelRoute"] header,
+[data-node-type^="Stubelius"] .node-title, [data-node-type^="Stubelius"] header {
+  background: ${INK} !important; color: ${GOLD} !important;
+}
+[data-node-type^="MuseMinimax"] input[type="checkbox"], [data-node-type^="MuseMinimax"] input[type="range"],
+[data-node-type^="Stubelius"] input[type="checkbox"], [data-node-type^="Stubelius"] input[type="range"] {
+  accent-color: ${GOLD} !important;
+}
 /* Muse dashboards (node content) */
 [class*="mmd-"] {
   --mmd-accent: ${GOLD} !important;
