@@ -16,12 +16,14 @@ const INK_BODY   = "#14100a";   // node bodies
 const INK_DEEP   = "#080704";   // canvas
 const INK_WIDGET = "#0a0804";
 
+let THEME_ON = true;   // mirrored from the ComfyUI setting below
+
 function isMuse(node) {
   const cls = (node && node.comfyClass) || "";
   return cls.startsWith("MuseMinimax") || cls === "MuseModelRoute" || cls.startsWith("Stubelius");
 }
 function paintNode(node) {
-  if (!isMuse(node)) return;
+  if (!THEME_ON || !isMuse(node)) return;
   node.color = INK;
   node.bgcolor = INK_BODY;
   // per-CLASS title color is safe here: the constructor is one of ours
@@ -30,6 +32,7 @@ function paintNode(node) {
 
 const TRACK_REST = "#241d08";
 function goldifySlider(el) {
+  if (!THEME_ON) return;
   if (el.style.getPropertyValue("--mmd-accent") !== GOLD) {
     el.style.setProperty("--mmd-accent", GOLD);
   }
@@ -66,6 +69,18 @@ const sliderObserver = new MutationObserver((muts) => {
   }
 });
 
+function unpaintEverything() {
+  const g = app.graph;
+  if (!g) return;
+  for (const n of g._nodes || []) {
+    if (!isMuse(n)) continue;
+    delete n.color;
+    delete n.bgcolor;
+    if (n.constructor) delete n.constructor.title_text_color;
+  }
+  app.canvas?.setDirty(true, true);
+}
+
 function paintEverything() {
   const g = app.graph;
   if (!g) return;
@@ -73,10 +88,33 @@ function paintEverything() {
   app.canvas?.setDirty(true, true);
 }
 
+function setThemeEnabled(on) {
+  THEME_ON = !!on;
+  const s = document.getElementById("stubelius-gold-graph");
+  if (s) s.disabled = !THEME_ON;
+  if (THEME_ON) { paintEverything(); goldifyAllSliders(); }
+  else unpaintEverything();
+}
+
 app.registerExtension({
   name: "stubelius.gold.graph",
 
+  settings: [
+    {
+      id: "stubelius.goldTheme.enabled",
+      name: "Stubelius Gold theme (Muse nodes)",
+      tooltip: "Gold-on-black styling for the Muse Minimax Director/Refine nodes and their dashboards. Turn off to render them in your own ComfyUI theme.",
+      type: "boolean",
+      defaultValue: true,
+      onChange: (value) => setThemeEnabled(value),
+    },
+  ],
+
   setup() {
+    try {
+      const v = app.extensionManager?.setting?.get?.("stubelius.goldTheme.enabled");
+      if (v !== undefined && v !== null) THEME_ON = !!v;
+    } catch (e) { /* default stays on */ }
     // (global LiteGraph palette, link colors and canvas background intentionally
     // NOT touched - this theme is scoped to the pack's own nodes and dashboards.)
 
@@ -201,7 +239,7 @@ app.registerExtension({
     if (cls.startsWith("MuseMinimax") || cls === "MuseModelRoute") {
       const orig = node.onDrawForeground;
       node.onDrawForeground = function (ctx) {
-        if (!this.flags?.collapsed) {
+        if (THEME_ON && !this.flags?.collapsed) {
           ctx.save();
           const t = window.LiteGraph.NODE_TITLE_HEIGHT;
           ctx.shadowColor = GOLD; ctx.shadowBlur = 12;
