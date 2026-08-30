@@ -393,7 +393,11 @@ def _refine_one_chunk(
             SplitSigmas, sigmas=full_sigmas, step=split_step,
         ))[:2]
 
-    if (not _is_complete) and str(two_stage_strategy).startswith("complete") and carry_images is None:
+    if (not _is_complete) and str(two_stage_strategy).startswith("complete"):
+        # Carry chunks included: the saved stage-1 latent already encodes the scout's
+        # own chunk-to-chunk continuity (the Director carried between chunks while
+        # scouting), so the 1x completion runs standalone; the polish phase below then
+        # re-anchors against the PREVIOUS POLISHED chunk via the normal carry path.
         # ── Stubelius "complete then polish", Phase 1: finish the take at 1x ──
         # The stock two-stage upscales a HALF-BAKED mid-schedule latent: dirty video
         # into a clean-latent upscaler, half-denoised audio re-rolled against changed
@@ -428,7 +432,7 @@ def _refine_one_chunk(
             model, clip, vae, audio_vae, chunk_prompt, _c_completed,
             ref_image_size, seed, steps, two_stage_first_pass_steps,
             sampler_name, scheduler, two_stage_upscale_factor, two_stage_upscale_method,
-            ref_images_dict, None, None, 0,
+            ref_images_dict, carry_images, carry_audio, carry_length,
             log_label=log_label + " [polish]",
             audio_lock=audio_lock,
             refine_denoise=refine_denoise,
