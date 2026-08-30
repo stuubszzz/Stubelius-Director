@@ -259,6 +259,24 @@ def _coerce_bool(v, default):
     return bool(default)
 
 
+def _nt_parts(nt):
+    """Best-effort access to a NestedTensor's (video, audio) component tensors."""
+    for attr in ("tensors", "_tensors", "unbind"):
+        v = getattr(nt, attr, None)
+        if v is None:
+            continue
+        try:
+            parts = list(v() if callable(v) else v)
+            if len(parts) == 2:
+                return parts
+        except Exception:
+            pass
+    try:
+        return [nt[0], nt[1]]
+    except Exception:
+        return None
+
+
 def _refine_one_chunk(
     model, clip, vae, audio_vae, chunk_prompt, chunk_latent,
     ref_image_size, seed, steps, two_stage_first_pass_steps,
@@ -449,9 +467,8 @@ def _refine_one_chunk(
         ))
         log.info("[MuseMinimaxRefineV1_2] %s Stubelius audio lock: candidate audio frozen through pass 2.",
                  log_label)
-    elif audio_lock:
-        log.warning("[MuseMinimaxRefineV1_2] %s Stubelius audio lock skipped: multi-chunk carry uses the "
-                    "stock audio continuation to keep chunk seams intact.", log_label)
+    # (carry chunks get their audio lock applied AFTER the continuity re-anchor below,
+    # merged into the masked-context denoise mask - see the block following the re-anchor.)
 
     # Continuity re-anchor — only when this isn't the first chunk of a bundle
     # (carry_images is None for a plain single-chunk candidate, or the first
@@ -488,6 +505,32 @@ def _refine_one_chunk(
         log.warning("[MuseMinimaxRefineV1_2] %s: no continuity carry applied — the 'H3 Generated AV Masked "
                     "Context' custom node (ComfyUI-H3-Motion-Context-MultiRef) isn't installed. This chunk's "
                     "seam may not match the rest of the video.", log_label)
+
+    if audio_lock and carry_images is not None:
+        # Freeze the ENTIRE audio stream on carry chunks too: the context region is the
+        # previous chunk's already-final audio, the content region is this chunk's own
+        # auditioned candidate audio - and the two are continuous by construction, since
+        # the Director's scout generated them as one sequence. Only the video side keeps
+        # the masked-context denoise mask (context frozen, content polished).
+        from comfy import nested_tensor as _comfy_nested
+        try:
+            nm = recombined.get("noise_mask") if isinstance(recombined, dict) else None
+            parts = _nt_parts(nm) if nm is not None else None
+            recombined = dict(recombined)
+            if parts is not None:
+                recombined["noise_mask"] = _comfy_nested.NestedTensor((
+                    parts[0], torch.zeros_like(parts[1]),
+                ))
+            else:
+                recombined["noise_mask"] = _comfy_nested.NestedTensor((
+                    torch.ones_like(video_primed["samples"]),
+                    torch.zeros_like(audio_carry["samples"]),
+                ))
+            log.info("[MuseMinimaxRefineV1_2] %s Stubelius audio lock: candidate audio kept "
+                     "through the carry chunk (video-only polish).", log_label)
+        except Exception as _e:
+            log.warning("[MuseMinimaxRefineV1_2] %s audio lock on carry chunk failed (%s) - "
+                        "falling back to stock audio continuation.", log_label, _e)
 
     noise2 = _unpack_node_result(_execute_comfy_node(DisableNoise))[0]
     sampled = _unpack_node_result(_execute_comfy_node(
