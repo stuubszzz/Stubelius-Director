@@ -365,7 +365,21 @@ def _unpack_node_result(out):
     return (out,)
 
 
+def _coerce_locale_float(v, default):
+    """Tolerate locale decimal commas ("0,5") and stray whitespace from the dashboard
+    fields - float("0,5") otherwise fails/falls back and silently resolves the wrong
+    resolution (the '0,5MP scouts rendered at 2MP' trap)."""
+    try:
+        if isinstance(v, str):
+            v = v.strip().replace(",", ".")
+        f = float(v)
+        return f if f == f and f > 0 else default   # NaN/zero guard
+    except Exception:
+        return default
+
+
 def _resolve_resolution(aspect_ratio: str, megapixels: float, multiple: int):
+    megapixels = _coerce_locale_float(megapixels, 0.98)
     """Exact port of the stock ResolutionSelector node's own formula."""
     w_ratio, h_ratio = ASPECT_RATIOS[AspectRatio(aspect_ratio)]
     total_pixels = megapixels * 1024 * 1024
