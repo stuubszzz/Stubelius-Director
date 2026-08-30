@@ -259,6 +259,25 @@ def _coerce_bool(v, default):
     return bool(default)
 
 
+def _free_vram(reason=""):
+    """Aggressively release VRAM between heavy stages. The fp32 gold upscaler's
+    buffers + pre-upscale latents otherwise linger into the 2MP sampling phase,
+    tipping the 20GB model into dynamic weight-streaming - the difference between
+    ~1-2 min/step and ~7 min/step on a 32GB card."""
+    try:
+        import gc
+        import torch
+        import comfy.model_management as mm
+        gc.collect()
+        mm.soft_empty_cache()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
+        log.info("[MuseMinimaxRefineV1_2] freed VRAM%s.", f" ({reason})" if reason else "")
+    except Exception as e:  # noqa: BLE001
+        log.warning("[MuseMinimaxRefineV1_2] VRAM free failed: %s", e)
+
+
 def _nt_parts(nt):
     """Best-effort access to a NestedTensor's (video, audio) component tensors."""
     for attr in ("tensors", "_tensors", "unbind"):
@@ -436,6 +455,7 @@ def _refine_one_chunk(
         "[MuseMinimaxRefineV1_2] %s upscale: latent %dx%d -> %dx%d (requested %.2fx, effective %.3fx/%.3fx)",
         log_label, cur_w_latent, cur_h_latent, tgt_w, tgt_h, float(two_stage_upscale_factor), eff_x, eff_y,
     )
+    _free_vram("post-upscale")
 
     noise1 = _unpack_node_result(_execute_comfy_node(
         NODE_CLASS_MAPPINGS["RandomNoise"], noise_seed=seed,
@@ -532,6 +552,7 @@ def _refine_one_chunk(
             log.warning("[MuseMinimaxRefineV1_2] %s audio lock on carry chunk failed (%s) - "
                         "falling back to stock audio continuation.", log_label, _e)
 
+    _free_vram("pre-sample")
     noise2 = _unpack_node_result(_execute_comfy_node(DisableNoise))[0]
     sampled = _unpack_node_result(_execute_comfy_node(
         SamplerCustomAdvanced, noise=noise2, guider=guider, sampler=sampler,
