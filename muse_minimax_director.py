@@ -69,6 +69,7 @@ import tempfile
 
 import av
 import comfy.utils
+import comfy.samplers
 import folder_paths
 import numpy as np
 import torch
@@ -1036,8 +1037,12 @@ class MuseMinimaxDirector:
                     "who already has a fully-formatted H3 prompt and wants to skip the Director's own "
                     "compiler entirely, same as typing directly into the stock node's prompt box."}),
                 "steps": ("INT", {"default": 20, "min": 1, "max": 100}),
-                "sampler_name": (["res_multistep", "euler", "euler_ancestral", "dpmpp_2m"], {"default": "res_multistep"}),
-                "scheduler": (["simple", "normal", "beta", "sgm_uniform"], {"default": "simple"}),
+                # Full live sampler/scheduler registry (includes er_sde, RES4LYF res_2m
+                # etc. when installed) - sampling goes through KSamplerSelect which
+                # accepts any registered name, so the declared list should too. The
+                # dashboard's dropdowns mirror this list automatically.
+                "sampler_name": (comfy.samplers.KSampler.SAMPLERS, {"default": "res_multistep"}),
+                "scheduler": (comfy.samplers.KSampler.SCHEDULERS, {"default": "simple"}),
                 "two_stage_sampling": ("BOOLEAN", {"default": False, "tooltip":
                     "Experimental. Runs the first few steps at a lower resolution, upscales the "
                     "video latent directly (no VAE round-trip), then finishes the remaining steps "
