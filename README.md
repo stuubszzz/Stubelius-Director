@@ -7,7 +7,9 @@
 
 Install **instead of** the original pack (and remove any standalone `muse-minimax-refine` install) — node class names are unchanged, so existing workflows and timelines keep working.
 
----https://youtu.be/JAdoKVSE2LY
+Video: https://youtu.be/JAdoKVSE2LY · How it works, with step counts: [the Stubelius Director guide](https://stuubzzz.studio/blog/minimax-h3-director-seed-hunt-two-stage-comfyui/)
+
+---
 
 # Muse Minimax Director V1.2
 
